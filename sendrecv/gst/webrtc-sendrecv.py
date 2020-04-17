@@ -22,6 +22,13 @@ webrtcbin name=sendrecv bundle-policy=max-bundle stun-server=stun://stun.l.googl
  audiotestsrc is-live=true wave=red-noise ! audioconvert ! audioresample ! queue ! opusenc ! rtpopuspay !
  queue ! application/x-rtp,media=audio,encoding-name=OPUS,payload=96 ! sendrecv.
 '''
+PIPELINE_DESC = '''
+webrtcbin name=sendrecv bundle-policy=max-bundle stun-server=stun://stun.l.google.com:19302
+ videotestsrc is-live=true pattern=ball ! videoconvert ! queue ! vp8enc deadline=1 ! rtpvp8pay !
+ queue ! application/x-rtp,media=video,encoding-name=VP8,payload=97 ! sendrecv.
+ jackaudiosrc connect=0 ! audioconvert ! audioresample ! queue ! opusenc ! rtpopuspay !
+ queue ! application/x-rtp,media=audio,encoding-name=OPUS,payload=96 ! sendrecv.
+'''
 
 class WebRTCClient:
     def __init__(self, id_, peer_id, server):
@@ -50,7 +57,8 @@ class WebRTCClient:
     def on_offer_created(self, promise, _, __):
         promise.wait()
         reply = promise.get_reply()
-        offer = reply['offer']
+        print(f'reply {reply}')
+        offer = reply.get_value('offer')
         promise = Gst.Promise.new()
         self.webrtc.emit('set-local-description', offer, promise)
         promise.interrupt()
@@ -70,15 +78,20 @@ class WebRTCClient:
             print (pad, 'has no caps, ignoring')
             return
 
+        # caps = pad.get_current_caps()
+        # assert (len(caps))
+        # s = caps[0]
+        # name = s.get_name()
         caps = pad.get_current_caps()
-        assert (len(caps))
-        s = caps[0]
-        name = s.get_name()
+        name = caps.to_string()
+
         if name.startswith('video'):
             q = Gst.ElementFactory.make('queue')
             conv = Gst.ElementFactory.make('videoconvert')
             sink = Gst.ElementFactory.make('autovideosink')
-            self.pipe.add(q, conv, sink)
+            self.pipe.add(q)
+            self.pipe.add(conv)
+            self.pipe.add(sink)
             self.pipe.sync_children_states()
             pad.link(q.get_static_pad('sink'))
             q.link(conv)
@@ -88,7 +101,10 @@ class WebRTCClient:
             conv = Gst.ElementFactory.make('audioconvert')
             resample = Gst.ElementFactory.make('audioresample')
             sink = Gst.ElementFactory.make('autoaudiosink')
-            self.pipe.add(q, conv, resample, sink)
+            self.pipe.add(q)
+            self.pipe.add(conv)
+            self.pipe.add(resample)
+            self.pipe.add(sink)
             self.pipe.sync_children_states()
             pad.link(q.get_static_pad('sink'))
             q.link(conv)
